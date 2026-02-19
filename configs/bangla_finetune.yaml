@@ -1,0 +1,103 @@
+# Bengali Moonshine Fine-Tuning Configuration
+# Dataset: Local Bengali dataset with audio and sentence columns
+
+dataset:
+  # For local dataset in arrow format
+  path: "/kaggle/input/preparong-moonshine-data/bangla_moonshine_ds"
+  train_split: "train"
+  test_split: "test"
+  # Column names - exactly as in your dataset
+  audio_column: "audio"
+  text_column: "sentence"
+  language: "bengali"
+
+# Audio processing configuration
+audio:
+  sample_rate: 16000
+  min_duration: 1.0      # Filter out very short audio (< 1 second)
+  max_duration: 30.0     # Paper recommends [4, 30] seconds for training
+
+# Training configuration
+training:
+  output_dir: "./results-moonshine-bengali"
+  num_train_epochs: 3
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 32
+  gradient_accumulation_steps: 1
+  
+  # Optimization
+  optim: "adamw_torch"
+  learning_rate: 5e-5
+  warmup_steps: 500
+  max_grad_norm: 1.0
+  lr_scheduler_type: "linear"
+  
+  # Evaluation and saving
+  eval_strategy: "steps"
+  eval_steps: 500
+  save_steps: 500
+  logging_steps: 100
+  predict_with_generate: true
+  
+  # Model selection
+  load_best_model_at_end: true
+  metric_for_best_model: "wer"
+  greater_is_better: false
+  
+  # Memory optimization
+  gradient_checkpointing: true
+  fp16: true
+  fp16_full_eval: true
+  
+  # Grouping by length
+  group_by_length: true
+  length_column_name: "input_length"
+  
+  # Logging
+  report_to: ["tensorboard"]
+  logging_dir: "./logs"
+
+# Model configuration
+model:
+  name: "UsefulSensors/moonshine-tiny"
+  freeze_encoder: false
+
+# Curriculum Learning - 3 Progressive Phases
+curriculum:
+  enabled: true
+  stages:
+    # Phase 1: Short audio clips (0-5 seconds)
+    # Helps model learn basic phoneme patterns in Bengali
+    - name: "Phase 1: Short Audio"
+      duration: 2000  # training steps
+      max_audio_length: 5.0
+      max_words: 15
+      description: "Short audio clips (< 5s) - learn basic patterns"
+      learning_rate: 5e-5
+      warmup_steps: 500
+      label_smoothing: 0.0
+      target_wer: 50.0
+      
+    # Phase 2: Medium audio clips (5-10 seconds)
+    # Model learns longer sequences and context
+    - name: "Phase 2: Medium Audio"
+      duration: 3000
+      max_audio_length: 10.0
+      max_words: 25
+      description: "Medium audio clips (5-10s) - improve accuracy"
+      learning_rate: 3e-5
+      warmup_steps: 300
+      label_smoothing: 0.1
+      target_wer: 35.0
+      
+    # Phase 3: Full-length audio (10-20 seconds)
+    # Final polishing with realistic audio lengths
+    - name: "Phase 3: Full Audio"
+      duration: 3000
+      max_audio_length: 20.0
+      max_words: null  # No word limit
+      description: "Full-length audio (10-20s) - final polish"
+      learning_rate: 1e-5
+      warmup_steps: 200
+      label_smoothing: 0.15
+      target_wer: 20.0
